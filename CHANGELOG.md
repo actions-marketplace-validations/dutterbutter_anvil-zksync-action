@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/dutterbutter/anvil-zksync-action/compare/v1.2.0...v1.3.0) (2025-07-04)
+
+
+### Features
+
+* add token usage for rate limiting issue ([194d28f](https://github.com/dutterbutter/anvil-zksync-action/commit/194d28f39cae41881817ece70af4dfdef93a4a71))
+
 # [1.2.0](https://github.com/dutterbutter/anvil-zksync-action/compare/v1.1.0...v1.2.0) (2025-05-18)
 
 
