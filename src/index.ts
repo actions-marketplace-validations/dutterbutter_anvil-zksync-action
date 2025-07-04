@@ -1,4 +1,5 @@
 import * as core from "@actions/core";
+import * as github from "@actions/github"; 
 import * as tc from "@actions/tool-cache";
 import { exec } from "@actions/exec";
 import { spawn } from "child_process";
@@ -63,6 +64,7 @@ type Inputs = {
   baseTokenSymbol?: string;
   baseTokenRatio?: string;
   extraArgs?: string;
+  token: string; // GitHub token for API access
 };
 
 const DEFAULTS = {
@@ -78,7 +80,7 @@ async function run() {
     const inputs = getInputs();
     validateInputs(inputs);
 
-    const toolPath = await setupTool(inputs.releaseTag, inputs.target);
+    const toolPath = await setupTool(inputs.releaseTag, inputs.target, inputs.token);
 
     const args = constructArgs(inputs);
     spawnProcess(toolPath, args);
@@ -100,6 +102,7 @@ function getInputs(): Inputs {
 
   return {
     releaseTag: core.getInput("releaseTag") || DEFAULTS.releaseTag,
+    token: core.getInput("token") || process.env.GITHUB_TOKEN || "",
     target: core.getInput("target") || DEFAULTS.target,
     mode: core.getInput("mode") || DEFAULTS.mode,
     forkUrl: core.getInput("forkUrl") || undefined,
@@ -178,12 +181,12 @@ function validateInputs(inputs: Inputs) {
   }
 }
 
-async function setupTool(releaseTag: string, target: string): Promise<string> {
+async function setupTool(releaseTag: string, target: string, token: string): Promise<string> {
   let toolPath = tc.find("anvil-zksync", releaseTag);
   if (!toolPath) {
-    const downloadUrl = await getDownloadUrl(releaseTag, target);
+    const downloadUrl = await getDownloadUrl(releaseTag, target, token);
     core.info(`Downloading anvil-zksync from ${downloadUrl}`);
-    const tarFile = await tc.downloadTool(downloadUrl);
+    const tarFile = await tc.downloadTool(downloadUrl, undefined, `token ${token}`);
     const extractedDir = await tc.extractTar(tarFile);
     toolPath = await tc.cacheDir(extractedDir, "anvil-zksync", releaseTag);
     core.info(`anvil-zksync cached at ${toolPath}`);
@@ -353,19 +356,21 @@ async function isNodeRunning(host: string, port: string): Promise<boolean> {
   }
 }
 
-async function getDownloadUrl(releaseTag: string, arch: string): Promise<string> {
-  const apiUrl =
+async function getDownloadUrl(releaseTag: string, arch: string, token: string): Promise<string> {
+  const octokit = github.getOctokit(token);
+  const release =
     releaseTag === "latest"
-      ? "https://api.github.com/repos/matter-labs/anvil-zksync/releases/latest"
-      : `https://api.github.com/repos/matter-labs/anvil-zksync/releases/tags/${releaseTag}`;
-  core.info(`Fetching release information from ${apiUrl}`);
-  const response = await fetch(apiUrl);
-  if (!response.ok) {
-    throw new Error(
-      `Failed to fetch release info for tag ${releaseTag}. HTTP Status: ${response.status}`
-    );
-  }
-  const releaseInfo = await response.json();
+      ? await octokit.rest.repos.getLatestRelease({
+          owner: "matter-labs",
+          repo: "anvil-zksync",
+        })
+      : await octokit.rest.repos.getReleaseByTag({
+          owner: "matter-labs",
+          repo: "anvil-zksync",
+          tag: releaseTag,
+        });
+
+  const releaseInfo = release.data;
   if (!releaseInfo || !releaseInfo.assets || !releaseInfo.assets.length) {
     throw new Error(`No release assets found for tag ${releaseTag}.`);
   }
